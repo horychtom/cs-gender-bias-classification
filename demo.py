@@ -2,8 +2,7 @@ import gradio as gr
 import torch
 import torch.nn.functional as F
 import numpy as np
-import re
-
+import nltk
 import transformers
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
@@ -11,38 +10,6 @@ checkpoint = 'ufal/robeczech-base'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 transformers.logging.set_verbosity(transformers.logging.ERROR)
 
-alphabets= "([A-Za-z])"
-prefixes = "(Mr|St|Mrs|Ms|Dr)[.]"
-suffixes = "(Inc|Ltd|Jr|Sr|Co)"
-starters = "(Mr|Mrs|Ms|Dr|He\s|She\s|It\s|They\s|Their\s|Our\s|We\s|But\s|However\s|That\s|This\s|Wherever)"
-acronyms = "([A-Z][.][A-Z][.](?:[A-Z][.])?)"
-websites = "[.](com|net|org|io|gov)"
-
-def split_into_sentences(text):
-    text = " " + text + "  "
-    text = text.replace("\n"," ")
-    text = re.sub(prefixes,"\\1<prd>",text)
-    text = re.sub(websites,"<prd>\\1",text)
-    if "Ph.D" in text: text = text.replace("Ph.D.","Ph<prd>D<prd>")
-    text = re.sub("\s" + alphabets + "[.] "," \\1<prd> ",text)
-    text = re.sub(acronyms+" "+starters,"\\1<stop> \\2",text)
-    text = re.sub(alphabets + "[.]" + alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>\\3<prd>",text)
-    text = re.sub(alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>",text)
-    text = re.sub(" "+suffixes+"[.] "+starters," \\1<stop> \\2",text)
-    text = re.sub(" "+suffixes+"[.]"," \\1<prd>",text)
-    text = re.sub(" " + alphabets + "[.]"," \\1<prd>",text)
-    if "”" in text: text = text.replace(".”","”.")
-    if "\"" in text: text = text.replace(".\"","\".")
-    if "!" in text: text = text.replace("!\"","\"!")
-    if "?" in text: text = text.replace("?\"","\"?")
-    text = text.replace(".",".<stop>")
-    text = text.replace("?","?<stop>")
-    text = text.replace("!","!<stop>")
-    text = text.replace("<prd>",".")
-    sentences = text.split("<stop>")
-    sentences = sentences[:-1]
-    sentences = [s.strip() for s in sentences]
-    return sentences
 
 def classify_sentence(sentence:str):
     sentence = tokenizer(sentence,truncation=True,return_tensors="pt")
@@ -59,7 +26,7 @@ def classify_sentence_wrapper(sentence:str):
     return {'Neutral':result[0].item(),'Female':result[1].item(),'Male':result[2].item()}
 
 def classify_text(text:str):
-    text = split_into_sentences(text)
+    text = nltk.sent_tokenize(text)
     result = list(map(classify_sentence,text))
     result = np.array([t.numpy() for t in result]).argmax(axis=1)
     return result
@@ -75,7 +42,7 @@ def classify_text_wrapper(text:str):
 
 def interpret_gender(text:str):
     result = classify_text(text)
-    split = split_into_sentences(text)
+    split = nltk.sent_tokenize(text)
     interpretation = []
     
     for idx,sentence in enumerate(split):
